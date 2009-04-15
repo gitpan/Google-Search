@@ -3,16 +3,25 @@ abstract: 'Interface to the Google AJAX Search API'
 author:
   - 'Robert Krimen, C<< <rkrimen at cpan.org> >>'
 build_requires:
-  Test::More: 0
+  Test::Most: 0
 distribution_type: module
-generated_by: 'Module::Install version 0.710'
+generated_by: 'Module::Install version 0.79'
 license: perl
 meta-spec:
-  url: http://module-build.sourceforge.net/META-spec-v1.3.html
-  version: 1.3
+  url: http://module-build.sourceforge.net/META-spec-v1.4.html
+  version: 1.4
 name: Google-Search
 no_index:
   directory:
     - inc
     - t
-version: 0.01
+requires:
+  Carp::Clan::Share: 0
+  JSON: 2
+  LWP::UserAgent: 0
+  Moose: 0
+  URI: 0
+resources:
+  license: http://dev.perl.org/licenses/
+  repository: http://github.com/robertkrimen/google-search/tree/master
+version: 0.021

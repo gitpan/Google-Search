@@ -9,11 +9,11 @@ Google::Search - Interface to the Google AJAX Search API
 
 =head1 VERSION
 
-Version 0.02
+Version 0.021
 
 =cut
 
-our $VERSION = '0.02';
+our $VERSION = '0.021';
 
 
 =head1 SYNOPSIS
@@ -212,7 +212,7 @@ sub request {
     my $uri = $self->uri->clone;
     $uri->query_form({ v => $self->v, rsz => $self->rsz, @parameters, @_ });
 
-    return unless my $http_response = $self->agent->get($uri, \@headers);
+    return unless my $http_response = $self->agent->get($uri, @headers);
 
     return Google::Search::Response->new(http_response => $http_response);
 }
@@ -310,7 +310,9 @@ sub all {
 
     my $result = $self->first;
     1 while $result && ($result = $result->next); # Fetch everything
-    die $self->error->reason unless $self->error->message eq "out of range start";
+    if ($self->error) {
+        die $self->error->reason unless $self->error->message eq "out of range start";
+    }
 
     my @results = @{ $self->_result };
     return wantarray ? @results : \@results;
@@ -337,7 +339,9 @@ sub match {
         push @matched, $result if $matcher->($result);
         $result = $result->next;
     }
-    die $self->error->reason unless $self->error->message eq "out of range start";
+    if ($self->error) {
+        die $self->error->reason unless $self->error->message eq "out of range start";
+    }
     return @matched;
 }
 
@@ -359,7 +363,9 @@ sub first_match {
         return $result if $matcher->($result);
         $result = $result->next;
     }
-    die $self->error->reason unless $self->error->message eq "out of range start";
+    if ($self->error) {
+        die $self->error->reason unless $self->error->message eq "out of range start";
+    }
     return undef;
 }
 
@@ -394,7 +400,7 @@ Robert Krimen, C<< <rkrimen at cpan.org> >>
 
 =head1 SEE ALSO
 
-L<Search::Google>
+L<REST::Google::Search>
 
 =head1 BUGS
 
