@@ -31,9 +31,9 @@ A L<URI> object best representing the location of the result
 
 "Supplies the title, but unlike .title, this property is stripped of html markup (e.g., <b>, <i>, etc.)"
 
-=head2 $result->number
+=head2 $result->rank
 
-The position of the result in the search (starting from 0)
+The position of the result in the search (0-based)
 
 =head2 $result->previous
 
@@ -51,102 +51,43 @@ The result class as given by Google
 
 =cut
 
-#package Google::Search::Result::Web;
+our $field = sub {
+    my $package = caller;
+    my %field = @_;
 
-#use Moose;
-#use Google::Search::Carp;
-#extends qw/Google::Search::Result/;
+    my $name = $field{name};
 
-#__PACKAGE__->has_field($_) for qw/title titleNoFormatting visibleUrl content/;
-#__PACKAGE__->has_uri_field($_) for qw/unescapedUrl cacheUrl/;
-#sub uri { return shift->unescapedUrl(@_) }
+    $package->meta->add_attribute( $name => qw/ is ro lazy_build 1 / );
+    $package->meta->add_method( "_build_$name" => sub {
+        my $self = shift;
+        my $value = $self->get( $name );
+        $value = URI->new( $value ) if $value && $field{uri};
+        return $value;
+    } );
+};
 
-#package Google::Search::Result::Local;
-
-#use Moose;
-#use Google::Search::Carp;
-#extends qw/Google::Search::Result/;
-
-#__PACKAGE__->has_field($_) for qw/title titleNoFormatting lat lng streetAddress city region country/;
-#__PACKAGE__->has_uri_field($_) for qw/url ddUrl ddUrlToHere ddUrlFromHere staticMapUrl/;
-#sub uri { return shift->url(@_) }
-
-#package Google::Search::Result::Video;
-
-#use Moose;
-#use Google::Search::Carp;
-#extends qw/Google::Search::Result/;
-
-#__PACKAGE__->has_field($_) for qw/title titleNoFormatting content published publisher duration tbWidth tbHeight/;
-#__PACKAGE__->has_uri_field($_) for qw/url tbUrl playUrl/;
-#sub uri { return shift->url(@_) }
-
-#package Google::Search::Result::Blog;
-
-#use Moose;
-#use Google::Search::Carp;
-#extends qw/Google::Search::Result/;
-
-#__PACKAGE__->has_field($_) for qw/title titleNoFormatting content publishedDate author/;
-#__PACKAGE__->has_uri_field($_) for qw/blogUrl postUrl/;
-#sub uri { return shift->postUrl(@_) }
-
-#package Google::Search::Result::News;
-
-#use Moose;
-#use Google::Search::Carp;
-#extends qw/Google::Search::Result/;
-
-#__PACKAGE__->has_field($_) for qw/title titleNoFormatting content url publisher location publishedDate/;
-#__PACKAGE__->has_uri_field($_) for qw/unescapedUrl clusterUrl/;
-#sub uri { return shift->unescapedUrl(@_) }
-
-#package Google::Search::Result::Book;
-
-#use Moose;
-#use Google::Search::Carp;
-#extends qw/Google::Search::Result/;
-
-#__PACKAGE__->has_field($_) for qw/title titleNoFormatting content url authors publishedYear bookId pageCount/;
-#__PACKAGE__->has_uri_field($_) for qw/unescapedUrl/;
-#sub uri { return shift->unescapedUrl(@_) }
-
-#package Google::Search::Result::Image;
-
-#use Moose;
-#use Google::Search::Carp;
-#extends qw/Google::Search::Result/;
-
-#__PACKAGE__->has_field($_) for qw/title titleNoFormatting content contentNoFormatting url visibleUrl width height tbWidth tbHeight/;
-#__PACKAGE__->has_uri_field($_) for qw/unescapedUrl originalContextUrl tbUrl/;
-
-#sub uri { return shift->unescapedUrl(@_) }
-
-use Moose;
+use Any::Moose;
 use Google::Search::Carp;
 
 use URI;
 
-has page => qw/is ro required 1 isa Google::Search::Page weak_ref 1/;
-has http_response => qw/is ro isa HTTP::Response required 1 lazy 1/, default => sub {
-    my $self = shift;
-    return $self->page->http_response;
-};
-has search => qw/is ro required 1 isa Google::Search weak_ref 1/;
-has number => is => "ro", isa => "Int", required => 1;
-has _content => is => "ro", required => 1;
-__PACKAGE__->has_field($_) for qw/GsearchResultClass/;
+has page => qw/ is ro required 1 isa Google::Search::Page /, handles => [qw/ http_response /];
+has search => qw/ is ro required 1 isa Google::Search /;
+has number => qw/ is ro isa Int required 1 /;
+sub rank { return shift->number( @_ ) }
+has _content => qw/ is ro required 1 /;
+$field->( name => $_ ) for qw/ GsearchResultClass /;
 
 sub previous {
     my $self = shift;
     my $number = $self->number;
     return undef unless $number > 0;
-    return $self->search->result($number - 1);
+    return $self->search->result( $number - 1 );
 }
 
 sub next {
     my $self = shift;
-    return $self->search->result($self->number + 1);
+    return $self->search->result( $self->number + 1 );
 }
 
 sub get {
@@ -155,24 +96,6 @@ sub get {
 
     return unless $field;
     return $self->_content->{$field};
-}
-
-sub has_field {
-    my $class = shift;
-    my $field = shift;
-    $class->meta->add_attribute($field => qw/is ro lazy 1/, default => sub {
-        return shift->get($field);
-    }, @_);
-}
-
-sub has_uri_field {
-    my $class = shift;
-    my $field = shift;
-    $class->meta->add_attribute($field => qw/is ro lazy 1/, default => sub {
-        my $self = shift;
-        return undef unless my $uri = $self->get($field);
-        return URI->new($uri);
-    }, @_);
 }
 
 sub parse {
@@ -187,89 +110,200 @@ sub parse {
     return $result_class->new(_content => $content, @_);
 }
 
-
 package Google::Search::Result::Web;
 
-use Moose;
+use Any::Moose;
 use Google::Search::Carp;
-extends qw/Google::Search::Result/;
+extends qw/ Google::Search::Result /;
 
-__PACKAGE__->has_field($_) for qw/title titleNoFormatting visibleUrl content/;
-__PACKAGE__->has_uri_field($_) for qw/unescapedUrl cacheUrl/;
+$field->( name => $_ ) for qw/
+title
+titleNoFormatting
+visibleUrl
+content
+/;
+
+$field->( name => $_, uri => 1 ) for qw/
+unescapedUrl
+cacheUrl
+/;
+
 sub uri { return shift->unescapedUrl(@_) }
 
 package Google::Search::Result::Local;
 
-use Moose;
+use Any::Moose;
 use Google::Search::Carp;
-extends qw/Google::Search::Result/;
+extends qw/ Google::Search::Result /;
 
-__PACKAGE__->has_field($_) for qw/title titleNoFormatting lat lng streetAddress city region country/;
-__PACKAGE__->has_uri_field($_) for qw/url ddUrl ddUrlToHere ddUrlFromHere staticMapUrl/;
+$field->( name => $_ ) for qw/
+title
+titleNoFormatting
+lat
+lng
+streetAddress
+city
+region
+country
+/;
+
+$field->( name => $_, uri => 1 ) for qw/
+url
+ddUrl
+ddUrlToHere
+ddUrlFromHere
+staticMapUrl
+/;
+
 sub uri { return shift->url(@_) }
 
 package Google::Search::Result::Video;
 
-use Moose;
+use Any::Moose;
 use Google::Search::Carp;
-extends qw/Google::Search::Result/;
+extends qw/ Google::Search::Result /;
 
-__PACKAGE__->has_field($_) for qw/title titleNoFormatting content published publisher duration tbWidth tbHeight/;
-__PACKAGE__->has_uri_field($_) for qw/url tbUrl playUrl/;
+$field->( name => $_ ) for qw/
+title
+titleNoFormatting
+content
+published
+publisher
+duration
+tbWidth
+tbHeight
+/;
+
+$field->( name => $_, uri => 1 ) for qw/
+url
+tbUrl
+playUrl
+/;
+
 sub uri { return shift->url(@_) }
 
 package Google::Search::Result::Blog;
 
-use Moose;
+use Any::Moose;
 use Google::Search::Carp;
-extends qw/Google::Search::Result/;
+extends qw/ Google::Search::Result /;
 
-__PACKAGE__->has_field($_) for qw/title titleNoFormatting content publishedDate author/;
-__PACKAGE__->has_uri_field($_) for qw/blogUrl postUrl/;
+$field->( name => $_ ) for qw/
+title
+titleNoFormatting
+content
+publishedDate
+author
+/;
+
+$field->( name => $_, uri => 1 ) for qw/
+blogUrl
+postUrl
+/;
+
 sub uri { return shift->postUrl(@_) }
 
 package Google::Search::Result::News;
 
-use Moose;
+use Any::Moose;
 use Google::Search::Carp;
-extends qw/Google::Search::Result/;
+extends qw/ Google::Search::Result /;
 
-__PACKAGE__->has_field($_) for qw/title titleNoFormatting content url publisher location publishedDate/;
-__PACKAGE__->has_uri_field($_) for qw/unescapedUrl clusterUrl/;
+$field->( name => $_ ) for qw/
+title
+titleNoFormatting
+content
+url
+publisher
+location
+publishedDate
+/;
+
+$field->( name => $_, uri => 1 ) for qw/
+unescapedUrl
+clusterUrl
+/;
+
 sub uri { return shift->unescapedUrl(@_) }
 
 package Google::Search::Result::Book;
 
-use Moose;
+use Any::Moose;
 use Google::Search::Carp;
-extends qw/Google::Search::Result/;
+extends qw/ Google::Search::Result /;
 
-__PACKAGE__->has_field($_) for qw/title titleNoFormatting content url authors publishedYear bookId pageCount tbWidth tbHeight/;
-__PACKAGE__->has_uri_field($_) for qw/unescapedUrl tbUrl/;
+$field->( name => $_ ) for
+qw/
+title
+titleNoFormatting
+content
+url
+authors
+publishedYear
+bookId
+pageCount
+tbWidth
+tbHeight
+/;
+
+$field->( name => $_, uri => 1 ) for
+qw/
+unescapedUrl
+tbUrl
+/;
+
 sub uri { return shift->unescapedUrl(@_) }
 
 package Google::Search::Result::Image;
 
-use Moose;
+use Any::Moose;
 use Google::Search::Carp;
-extends qw/Google::Search::Result/;
+extends qw/ Google::Search::Result /;
 
-__PACKAGE__->has_field($_) for qw/title titleNoFormatting content contentNoFormatting url visibleUrl width height tbWidth tbHeight/;
-__PACKAGE__->has_uri_field($_) for qw/unescapedUrl originalContextUrl tbUrl/;
+$field->( name => $_ ) for qw/
+title
+titleNoFormatting
+content
+contentNoFormatting
+url
+visibleUrl
+width
+height
+tbWidth
+tbHeight
+/;
+
+$field->( name => $_, uri => 1 ) for qw/
+unescapedUrl
+originalContextUrl
+tbUrl
+/;
+
+sub uri { return shift->unescapedUrl(@_) }
+
+package Google::Search::Result::Patent;
+
+use Any::Moose;
+use Google::Search::Carp;
+extends qw/ Google::Search::Result /;
+
+$field->( name => $_ ) for qw/
+title
+titleNoFormatting
+content
+url
+applicationDate
+patentNumber
+patentStatus
+assignee
+/;
+
+$field->( name => $_, uri => 1 ) for qw/
+unescapedUrl
+originalContextUrl
+tbUrl
+/;
 
 sub uri { return shift->unescapedUrl(@_) }
 
 1;
-
-__END__
-
-for my $field (qw/GsearchResultClass title titleNoFormatting url visibleUrl content/) {
-    has $field => is => "ro", lazy => 1, default => sub { 
-        return shift->content->{$field};
-    };
-}
-for my $field (qw/unescapedUrl postUrl blogUrl cacheUrl/) {
-    has $field => is => "ro", lazy => 1, default => sub { 
-    };
-}
-

@@ -9,54 +9,66 @@ Google::Search - Interface to the Google AJAX Search API
 
 =head1 VERSION
 
-Version 0.023
+Version 0.024
 
 =cut
 
-our $VERSION = '0.023';
+our $VERSION = '0.024';
 
 
 =head1 SYNOPSIS
 
-    my $key = ... # This should be a valid API key, gotten from:
-                  # http://code.google.com/apis/ajaxsearch/signup.html
-
-    my $referer = "http://www.mysite.com/index.html" # This should be a valid referer for the above key
-
-    my $search = Google::Search->Web(q => "rock", key => $key, referer => $referer);
+    my $search = Google::Search->Web( query => "rock" );
     my $result = $search->first;
-    while ($result) {
-        print $result->number, " ", $result->uri, "\n";
+    while ( $result ) {
+        print $result->rank, " ", $result->uri, "\n";
         $result = $result->next;
     }
 
-    $search = Google::Search->Local(..., q => "rock");
+You can also use the single-argument-style invocation:
 
-    $search = Google::Search->Video(..., q => "rock");
+    Google::Search->Web( "query" )
 
-    $search = Google::Search->Blog(..., q => "rock");
+The following kinds of searches are supported
 
-    $search = Google::Search->News(..., q => "rock");
+    Google::Search->Local( ... )
+    Google::Search->Video( ... )
+    Google::Search->Blog( ... )
+    Google::Search->News( ... )
+    Google::Search->Image( ... )
+    Google::Search->Patent( ... )
 
-    $search = Google::Search->Book(..., q => "rock");
+You can also take advantage of each service's specialized interface
 
-    $search = Google::Search->Image(..., q => "rock");
-
-    # You can also take advantage of each service's specialized interface
     # The search below specifies the latitude and longitude:
-    $search = Google::Search->Local(..., q => { q => "rock", sll => "33.823230,-116.512110" }, ...);
+    $search = Google::Search->Local( query => { q => "rock", sll => "33.823230,-116.512110" }, ... );
+
+    my $result = $search->first;
+    print $result->streetAddress, "\n";
     
+You can supply an API key and referrer (referer) if you have them
+
+    my $key = ... # This should be a valid API key, gotten from:
+                  # http://code.google.com/apis/ajaxsearch/signup.html
+
+    my $referrer = "http://example.com/" # This should be a valid referer for the above key
+
+    $search = Google::Search->Web(
+        key => $key, referrer => $referrer, # "referer =>" Would work too
+        query => { q => "rock", sll => "33.823230,-116.512110" }
+    );
+
 =head1 DESCRIPTION
 
 Google::Search is an interface to the Google AJAX Search API (L<http://code.google.com/apis/ajaxsearch/>). 
 
-Currently, their API looks like it will fetch you the top 28 results for your search query.
+Currently, their API looks like it will fetch you the top 64 results for your search query.
 
 According to the Terms of Service, you need to sign up for an API key here: L<http://code.google.com/apis/ajaxsearch/signup.html>
 
 =cut
 
-use Moose;
+use Any::Moose;
 use Google::Search::Carp;
 
 use Google::Search::Response;
@@ -65,167 +77,207 @@ use Google::Search::Result;
 use Google::Search::Error;
 use LWP::UserAgent;
 
-use constant SERVICE_URI => {
-    web => 'http://ajax.googleapis.com/ajax/services/search/web',
+BEGIN {
+    use vars qw/ $Base %Service2URI /;
+    $Base = 'http://ajax.googleapis.com/ajax/services/search';
+    %Service2URI = (
+        videos => "$Base/video",
+        blog => "$Base/blogs",
+        book => "$Base/books",
+        image => "$Base/images",
+        patents => "$Base/patent",
+        map { $_ => "$Base/$_" } qw/ web local video blogs news books images patent /,
+    );
+}
 
-    local => 'http://ajax.googleapis.com/ajax/services/search/local',
+=head1 Shortcut usage for a specific service
 
-    video => 'http://ajax.googleapis.com/ajax/services/search/video',
+=head2 Google::Search->Web
 
-    blog => 'http://ajax.googleapis.com/ajax/services/search/blogs',
-    blogs => 'http://ajax.googleapis.com/ajax/services/search/blogs',
+=head2 Google::Search->Local
 
-    news => 'http://ajax.googleapis.com/ajax/services/search/news',
+=head2 Google::Search->Video
 
-    book => 'http://ajax.googleapis.com/ajax/services/search/books',
-    books => 'http://ajax.googleapis.com/ajax/services/search/books',
+=head2 Google::Search->Blog
 
-    image => 'http://ajax.googleapis.com/ajax/services/search/images',
-    images => 'http://ajax.googleapis.com/ajax/services/search/images',
-};
+=head2 Google::Search->News
 
-=head1 METHODS
+=head2 Google::Search->Book
 
-=head2 Google::Search->Web(...)
+=head2 Google::Search->Image
 
-Create a new web search. See C<new> for more information.
+=head2 Google::Search->Patent
 
-=head2 Google::Search->Local(...)
+=head1 USAGE
 
-Create a new local search. See C<new> for more information.
+=head2 Google::Search->new( ... ) 
 
-=head2 Google::Search->Video(...)
-
-Create a new video search. See C<new> for more information.
-
-=head2 Google::Search->Blog(...)
-
-=head2 Google::Search->Blogs(...)
-
-Create a new blog search. See C<new> for more information.
-
-=head2 Google::Search->News(...)
-
-Create a new news search. See C<new> for more information.
-
-=head2 Google::Search->Book(...)
-
-=head2 Google::Search->Books(...)
-
-Create a new book search. See C<new> for more information.
-
-=head2 Google::Search->Image(...)
-
-=head2 Google::Search->Images(...)
-
-Create a new book search. See C<new> for more information.
-
-=head2 Google::Search->new(...) 
-
-Create and return a new Google::Search object
+Prepare a new search object (handle)
 
 You can configure the search by passing the following to C<new>:
 
-    q               The search phrase to submit to Google
+    query           The search phrase to submit to Google
                     Optionally, this can also be a hash of parameters to submit. You can
                     use the hash form to take advantage of each service's varying interface.
-                    Make sure to at least include a C<q> parameter with your search.
-
-    key             Your Google AJAX Search API key (see Description)
-
-    referer         A referer that is valid for the above key
+                    Make sure to at least include a "q" parameter with your search
 
     service         The service to search under. This can be any of: web,
-                    local, video, blog, news, book, or image.
+                    local, video, blog, news, book, image, patent
+
+    start           Optional. Start searching from "start" rank instead of 0.
+                    Google::Search will skip fetching unnecessary results
+
+    key             Optional. Your Google AJAX Search API key (see Description)
+
+    referrer        Optional. A referrer that is valid for the above key
+                    For legacy purposes, "referer" is an acceptable spelling
+
+Both C<query> and C<service> are required
 
 =cut
 
-for my $service (keys %{ SERVICE_URI() }) {
+sub service2uri {
+    my $class = shift;
+    my $service = shift;
+    croak "Missing service" unless $service;
+    $service = lc $service;
+    return unless my $uri = $Service2URI{$service};
+    return $uri;
+}
+
+sub uri_for_service {
+    return shift->service2uri( @_ );
+}
+
+sub BUILDARGS {
+    my $class = shift;
+    
+    my $given;
+    if ( 1 == @_ && ref $_[0] eq 'HASH' ) {
+        $given = $_[0];
+    }
+    elsif ( 3 == @_ && $_[0] eq 'service' && ! ref $_[2] && defined $_[2] ) {
+        my $query = pop;
+        $given = { @_, query => $query };
+    }
+    elsif ( 0 == @_ % 2 ) {
+        $given = { @_ };
+    }
+    else {
+        croak "Odd number of arguments: @_";
+    }
+
+    $given->{query} = $given->{q} if defined $given->{q} && ! defined $given->{query};
+    $given->{version} = $given->{v} if defined $given->{v} && ! defined $given->{version};
+    $given->{referer} = $given->{referrer}
+        if defined $given->{referrer} && ! defined $given->{referer};
+
+    return $given;
+}
+
+for my $service ( keys %Service2URI ) {
     no strict 'refs';
     my $method = ucfirst $service;
     *$method = sub {
         my $class = shift;
-        return $class->new(service => $service, @_);
+        return $class->new( service => $service, @_ );
     };
 }
 
-has agent => qw/is ro required 1 lazy 1 isa LWP::UserAgent/, default => sub {
+has agent => qw/ is ro lazy_build 1 isa LWP::UserAgent /;
+sub _build_agent {
     my $self = shift;
     my $agent = LWP::UserAgent->new;
     $agent->env_proxy;
     return $agent;
-};
-has service => qw/is ro lazy 1/, default => "web";
-has uri => qw/is ro required 1 lazy 1 isa URI/, default => sub {
+}
+
+has service => qw/ is ro lazy_build 1 /;
+sub _build_service { 'web' }
+
+has uri => qw/ is ro lazy_build 1 isa URI /;
+sub _build_uri {
     my $self = shift;
-    return URI->new($self->uri_for_service($self->service));
-};
-has q => qw/is ro required 1/;
-has v => qw/is ro required 1 isa Str/, default => sub { "1.0" };
-has referer => qw/is ro isa Str/;
-has key => qw/is ro isa Str/;
-has rsz => qw/is ro required 1 isa Str default small/;
-has rsz_number => qw/is ro required 1 isa Int/, default => sub {
+    my $service = $self->service;
+    my $uri = $self->service2uri( $service );
+    croak "Invalid service ($service)" unless $uri;
+    return URI->new( $uri );
+}
+
+has query => qw/ is ro required 1 /;
+sub q { return shift->query( @_ ) }
+
+has version => qw/ is ro lazy_build 1 isa Str /;
+sub _build_version { '1.0' }
+sub v { return shift->version( @_ ) }
+
+has referer => qw/ is ro isa Str /;
+sub referrer { return shift->referer( @_ ) }
+
+has key => qw/ is ro isa Str /;
+
+has start => qw/ is ro lazy_build 1 isa Int /;
+sub _build_start { 0 }
+
+has rsz => qw/ is ro lazy_build 1 isa Str /;
+sub _build_rsz { 'large' }
+has rsz2number => qw/ is ro lazy_build 1 isa Int /;
+sub _build_rsz2number {
     my $self = shift;
     my $rsz = $self->rsz;
     return 4 if $rsz eq "small";
     return 8 if $rsz eq "large";
     croak "Don't understand rsz ($rsz)";
-};
-has _page => qw/is ro required 1/, default => sub { [] };
-has _result => qw/is ro required 1/, default => sub { [] };
-has current => qw/is ro required 1 lazy 1/, default => sub {
-    return shift->first;
-};
-has error => qw/is rw/;
-
-sub uri_for_service {
-    my $self = shift;
-    my $service = shift;
-    return unless $service;
-    $service = lc $service;
-    $service =~ s/^\s*//g;
-    $service =~ s/\s*$//g;
-    return SERVICE_URI->{$service};
 }
+
+has _page => qw/ is ro required 1 /, default => sub { [] };
+has _result => qw/ is ro required 1 /, default => sub { [] };
+has current => qw/ is ro lazy_build 1 /;
+sub _build_current {
+    return shift->first;
+}
+has error => qw/ is rw /;
 
 sub request {
     my $self = shift;
 
-    my @parameters;
-    my @headers;
+    my ( @query_form, @header_supplement );
 
-    my $referer = $self->referer;
-    my $key = $self->key;
+    {
+        my $referer = $self->referer;
+        my $key = $self->key;
 
-    push @headers, Referer => $referer if $referer;
-    push @parameters, key => $key if $key;
+        push @header_supplement, Referer => $referer if $referer;
+        push @query_form, key => $key if $key;
+    }
 
-    my $q = $self->q;
-    if (ref $q eq "HASH") {
-        push @parameters, %$q;
+    my $query = $self->query;
+    if (ref $query eq "HASH") {
+        # TODO Check for query instead of q?
+        push @query_form, %$query;
     }
     else {
-        push @parameters, q => $q;
+        push @query_form, q => $query;
     }
 
     my $uri = $self->uri->clone;
-    $uri->query_form({ v => $self->v, rsz => $self->rsz, @parameters, @_ });
+    $uri->query_form({ v => $self->version, rsz => $self->rsz, @query_form, @_ });
 
-    return unless my $http_response = $self->agent->get($uri, @headers);
+    return unless my $http_response = $self->agent->get( $uri, @header_supplement );
 
-    return Google::Search::Response->new(http_response => $http_response);
+    return Google::Search::Response->new( http_response => $http_response );
 }
 
 sub page {
     my $self = shift;
     my $number = shift;
 
-    $self->error(undef);
+    $self->error( undef );
 
-    my $page = $self->_page->[$number] ||= Google::Search::Page->new(search => $self, number => $number);
+    my $page = $self->_page->[$number] ||=
+            Google::Search::Page->new( search => $self, number => $number );
 
-    $self->error($page->error) if $page->error;
+    $self->error( $page->error ) if $page->error;
 
     return $page;
 }
@@ -240,7 +292,7 @@ Returns undef if nothing was found
 
 sub first {
     my $self = shift;
-    return $self->result(0);
+    return $self->result( $self->start );
 }
 
 =head2 $search->next 
@@ -266,7 +318,7 @@ Returns a L<Google::Search::Result> corresponding to the result at <rank>
 
 These are equivalent:
 
-    $search->result(0)
+    $search->result( 0 )
 
     $search->first
 
@@ -276,16 +328,17 @@ sub result {
     my $self = shift;
     my $number = shift;
 
-    $self->error(undef);
+    $self->error( undef );
 
     return $self->_result->[$number] if $self->_result->[$number];
     my $result = do {
-        my $result_number = $number % $self->rsz_number;
-        my $page_number = int($number / $self->rsz_number);
-        my $page = $self->page($page_number);
-        my $content = $page->result($result_number);
-        if ($content) {
-            Google::Search::Result->parse($content, page => $page, search => $self, number => $number);
+        my $result_number = $number % $self->rsz2number;
+        my $page_number = int( $number / $self->rsz2number );
+        my $page = $self->page( $page_number );
+        my $content = $page->result( $result_number );
+        if ( $content ) {
+            Google::Search::Result->parse( $content,
+                page => $page, search => $self, number => $number);
         }
         else {
             undef;
@@ -309,7 +362,7 @@ sub all {
     my $self = shift;
 
     my $result = $self->first;
-    1 while $result && ($result = $result->next); # Fetch everything
+    1 while $result && ( $result = $result->next ); # Fetch everything
     if ($self->error) {
         die $self->error->reason unless $self->error->message eq "out of range start";
     }
