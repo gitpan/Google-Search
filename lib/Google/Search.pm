@@ -5,24 +5,21 @@ use strict;
 
 =head1 NAME
 
-Google::Search - Interface to the Google AJAX Search API
+Google::Search - Interface to the Google AJAX Search API and suggestion API
 
 =head1 VERSION
 
-Version 0.024
+Version 0.025
 
 =cut
 
-our $VERSION = '0.024';
-
+our $VERSION = '0.025';
 
 =head1 SYNOPSIS
 
     my $search = Google::Search->Web( query => "rock" );
-    my $result = $search->first;
-    while ( $result ) {
+    while ( my $result = $search->next ) {
         print $result->rank, " ", $result->uri, "\n";
-        $result = $result->next;
     }
 
 You can also use the single-argument-style invocation:
@@ -58,13 +55,17 @@ You can supply an API key and referrer (referer) if you have them
         query => { q => "rock", sll => "33.823230,-116.512110" }
     );
 
+Get suggestions from the unofficial Google suggestion API using C<suggest>
+
+    my $suggestions = Google::Search->suggest( $term )
+
 =head1 DESCRIPTION
 
 Google::Search is an interface to the Google AJAX Search API (L<http://code.google.com/apis/ajaxsearch/>). 
 
 Currently, their API looks like it will fetch you the top 64 results for your search query.
 
-According to the Terms of Service, you need to sign up for an API key here: L<http://code.google.com/apis/ajaxsearch/signup.html>
+You may want to sign up for an API key, but it is not required. You can do so here: L<http://code.google.com/apis/ajaxsearch/signup.html>
 
 =cut
 
@@ -76,6 +77,9 @@ use Google::Search::Page;
 use Google::Search::Result;
 use Google::Search::Error;
 use LWP::UserAgent;
+use JSON;
+
+my $json = JSON->new;
 
 BEGIN {
     use vars qw/ $Base %Service2URI /;
@@ -136,6 +140,52 @@ Both C<query> and C<service> are required
 
 =cut
 
+{
+    my $agent_;
+    sub suggest {
+        my $self = shift; # Could be class or object
+
+        my $agent = blessed $self ? $self->agent : ( $agent_ ||= LWP::UserAgent->new );
+        my ( $term, $query, $uri ) = ( undef, [], {} );
+
+        for( @_ ) {
+            next unless defined $_;
+            if      ( ! ref )          { $term = $_ }
+            elsif   ( ref eq 'ARRAY' ) { $query = $_ }
+            elsif   ( ref eq 'HASH' )  { $uri = $_ }
+            else                       { croak "Invalid parameter ($_)" }
+        }
+
+        croak "Missing term" unless defined $term;
+        my @query = @$query;
+        croak "Uneven query ($#query): ", @query if @query % 2;
+
+        my %query = @query;
+        unshift @query, q => $term unless exists $query{q};
+
+        my @uri = ( map { $_ => $uri->{$_} } grep { exists $uri->{$_} }
+            qw/ host port host_port scheme path userinfo authority agent / );
+        unshift @uri, qw{ scheme http host clients1.google.com path complete/search };
+        my %uri = @uri;
+        my $user_agent = delete $uri{agent};
+
+        $uri = URI->new;
+        while ( my ($k, $v) = each %uri ) { $uri->$k( $v ) }
+        $uri->query_form( @query );
+
+        my @header;
+        @header = ( 'User-Agent' => $user_agent ) if defined $user_agent;
+
+        my $response = $agent->get( $uri, @header );
+        croak "Failed response: ", $response->status_line unless $response->is_success;
+        my $content = $response->decoded_content;
+        croak "Malformed content: $content" unless $content =~ s/^.*?\(\[(.*)\]\)$/[$1]/g;
+        my $data = $json->decode( $content );
+        croak "Malformed content: $content" unless ref $data eq 'ARRAY' && $data->[1];
+        return $data->[1];
+    }
+}
+
 sub service2uri {
     my $class = shift;
     my $service = shift;
@@ -177,8 +227,9 @@ sub BUILDARGS {
 
 for my $service ( keys %Service2URI ) {
     no strict 'refs';
-    my $method = ucfirst $service;
-    *$method = sub {
+    my $umethod = ucfirst $service;
+    my $lmethod = lc $service;
+    *$umethod = *$lmethod = sub {
         my $class = shift;
         return $class->new( service => $service, @_ );
     };
@@ -443,6 +494,34 @@ If you receive undef from a result access then you can use this routine to see i
     # Etc, etc.
 
 This will return undef if no error was encountered
+
+=head2 Google::Search->suggest( $term, ... )
+
+Return a nested array from the Google auto-complete suggestion service. Each
+inner array consists of: the suggestion, the number of results, and the rank of the suggestion:
+
+    my $suggestions = Google::Search->suggest( 'monkey' )
+    print $suggestions->[0][0] # "monkey bread recipe"
+    print $suggestions->[0][1] # "413,000 results"
+    print $suggestions->[0][2] # 0
+
+    for my $suggestion ( @$suggestions ) {
+        ...
+    }
+
+To override the language (or any query parameter or to add in your own parameters), pass in an array:
+
+    # Get the results back in German (de)
+    Google::Search->suggest( [ hl => 'de' ], 'monkey' )
+
+To alter the URI hostname/path or to give a custom user agent, pass in a hash:
+
+    Google::Search->suggest( [ hl => 'de' ], 'monkey', {
+        host => 'clients1.google.de',
+        agent => 'Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 5.1)'
+    } )
+
+The passing order of the array, hash, and string does not matter
 
 =cut
 

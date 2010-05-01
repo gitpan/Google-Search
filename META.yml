@@ -1,5 +1,5 @@
 ---
-abstract: 'Interface to the Google AJAX Search API'
+abstract: 'Interface to the Google AJAX Search API and suggestion API'
 author:
   - 'Robert Krimen, C<< <rkrimen at cpan.org> >>'
 build_requires:
@@ -28,4 +28,4 @@ requires:
 resources:
   license: http://dev.perl.org/licenses/
   repository: http://github.com/robertkrimen/google-search/tree/master
-version: 0.024
+version: 0.025
