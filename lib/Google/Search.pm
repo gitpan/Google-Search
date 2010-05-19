@@ -1,73 +1,13 @@
 package Google::Search;
+BEGIN {
+  $Google::Search::VERSION = '0.026';
+}
+# ABSTRACT: Interface to the Google AJAX Search API and suggestion API
+
 
 use warnings;
 use strict;
 
-=head1 NAME
-
-Google::Search - Interface to the Google AJAX Search API and suggestion API
-
-=head1 VERSION
-
-Version 0.025
-
-=cut
-
-our $VERSION = '0.025';
-
-=head1 SYNOPSIS
-
-    my $search = Google::Search->Web( query => "rock" );
-    while ( my $result = $search->next ) {
-        print $result->rank, " ", $result->uri, "\n";
-    }
-
-You can also use the single-argument-style invocation:
-
-    Google::Search->Web( "query" )
-
-The following kinds of searches are supported
-
-    Google::Search->Local( ... )
-    Google::Search->Video( ... )
-    Google::Search->Blog( ... )
-    Google::Search->News( ... )
-    Google::Search->Image( ... )
-    Google::Search->Patent( ... )
-
-You can also take advantage of each service's specialized interface
-
-    # The search below specifies the latitude and longitude:
-    $search = Google::Search->Local( query => { q => "rock", sll => "33.823230,-116.512110" }, ... );
-
-    my $result = $search->first;
-    print $result->streetAddress, "\n";
-    
-You can supply an API key and referrer (referer) if you have them
-
-    my $key = ... # This should be a valid API key, gotten from:
-                  # http://code.google.com/apis/ajaxsearch/signup.html
-
-    my $referrer = "http://example.com/" # This should be a valid referer for the above key
-
-    $search = Google::Search->Web(
-        key => $key, referrer => $referrer, # "referer =>" Would work too
-        query => { q => "rock", sll => "33.823230,-116.512110" }
-    );
-
-Get suggestions from the unofficial Google suggestion API using C<suggest>
-
-    my $suggestions = Google::Search->suggest( $term )
-
-=head1 DESCRIPTION
-
-Google::Search is an interface to the Google AJAX Search API (L<http://code.google.com/apis/ajaxsearch/>). 
-
-Currently, their API looks like it will fetch you the top 64 results for your search query.
-
-You may want to sign up for an API key, but it is not required. You can do so here: L<http://code.google.com/apis/ajaxsearch/signup.html>
-
-=cut
 
 use Any::Moose;
 use Google::Search::Carp;
@@ -77,6 +17,7 @@ use Google::Search::Page;
 use Google::Search::Result;
 use Google::Search::Error;
 use LWP::UserAgent;
+require HTTP::Request::Common;
 use JSON;
 
 my $json = JSON->new;
@@ -94,51 +35,17 @@ BEGIN {
     );
 }
 
-=head1 Shortcut usage for a specific service
 
-=head2 Google::Search->Web
-
-=head2 Google::Search->Local
-
-=head2 Google::Search->Video
-
-=head2 Google::Search->Blog
-
-=head2 Google::Search->News
-
-=head2 Google::Search->Book
-
-=head2 Google::Search->Image
-
-=head2 Google::Search->Patent
-
-=head1 USAGE
-
-=head2 Google::Search->new( ... ) 
-
-Prepare a new search object (handle)
-
-You can configure the search by passing the following to C<new>:
-
-    query           The search phrase to submit to Google
-                    Optionally, this can also be a hash of parameters to submit. You can
-                    use the hash form to take advantage of each service's varying interface.
-                    Make sure to at least include a "q" parameter with your search
-
-    service         The service to search under. This can be any of: web,
-                    local, video, blog, news, book, image, patent
-
-    start           Optional. Start searching from "start" rank instead of 0.
-                    Google::Search will skip fetching unnecessary results
-
-    key             Optional. Your Google AJAX Search API key (see Description)
-
-    referrer        Optional. A referrer that is valid for the above key
-                    For legacy purposes, "referer" is an acceptable spelling
-
-Both C<query> and C<service> are required
-
-=cut
+sub _inflate_query (@) {
+    my @query;
+    for (@_) {
+        if      ( ref eq 'HASH' )   { push @query, %$_ }
+        elsif   ( ref eq 'ARRAY' )  { push @query, @$_ }
+        elsif   ( ! ref )           { push @query, q => $_ } 
+        else                        { croak "Invalid query ($_)" }
+    }
+    return \@query;
+}
 
 {
     my $agent_;
@@ -195,10 +102,6 @@ sub service2uri {
     return $uri;
 }
 
-sub uri_for_service {
-    return shift->service2uri( @_ );
-}
-
 sub BUILDARGS {
     my $class = shift;
     
@@ -213,15 +116,35 @@ sub BUILDARGS {
     elsif ( 0 == @_ % 2 ) {
         $given = { @_ };
     }
+    elsif ( @_ > 3 && $_[0] eq 'service' ) {
+        my @given = splice @_, 0, 2;
+        push @given, query => shift @_;
+        $given = { @given, @_ };
+    }
     else {
         croak "Odd number of arguments: @_";
     }
 
-    $given->{query} = $given->{q} if defined $given->{q} && ! defined $given->{query};
-    $given->{version} = $given->{v} if defined $given->{v} && ! defined $given->{version};
-    $given->{referer} = $given->{referrer}
-        if defined $given->{referrer} && ! defined $given->{referer};
+    my $query = delete $given->{q};
+    $given->{query} = $query if defined $query && ! defined $given->{query};
 
+    my $version = delete $given->{v};
+    $given->{version} = $version if defined $version && ! defined $given->{version};
+
+    my $referrer = delete $given->{referrer};
+    $given->{referer} = $referrer if defined $referrer && ! defined $given->{referer};
+
+    $query = $given->{query};
+    my @query;
+
+    while( my( $key, $value ) = each %$given ) {
+        next if $key =~ m/^(?:agent|service|uri|query|version|hl|referer|
+            key|start|rsz|rsz2number|current|error)$/x;
+        carp "Including unknown parameter \"$key\" with query";
+        push @query, $key => $value;
+    }
+
+    $given->{query} = _inflate_query \@query, $query if @query;
     return $given;
 }
 
@@ -262,6 +185,8 @@ has version => qw/ is ro lazy_build 1 isa Str /;
 sub _build_version { '1.0' }
 sub v { return shift->version( @_ ) }
 
+has hl => qw/ is rw predicate has_hl /;
+
 has referer => qw/ is ro isa Str /;
 sub referrer { return shift->referer( @_ ) }
 
@@ -291,6 +216,13 @@ has error => qw/ is rw /;
 
 sub request {
     my $self = shift;
+    my $http_request = $self->build( @_ );
+    return unless my $http_response = $self->agent->request( $http_request );
+    return Google::Search::Response->new( http_response => $http_response );
+}
+
+sub build {
+    my $self = shift;
 
     my ( @query_form, @header_supplement );
 
@@ -303,20 +235,24 @@ sub request {
     }
 
     my $query = $self->query;
-    if (ref $query eq "HASH") {
-        # TODO Check for query instead of q?
-        push @query_form, %$query;
-    }
-    else {
-        push @query_form, q => $query;
-    }
+    # TODO Check for query instead of q?
+    push @query_form, @{ _inflate_query $query };
+    push @query_form, hl => $self->hl if $self->has_hl;
 
     my $uri = $self->uri->clone;
     $uri->query_form({ v => $self->version, rsz => $self->rsz, @query_form, @_ });
 
-    return unless my $http_response = $self->agent->get( $uri, @header_supplement );
+    if ( $ENV{GS_TRACE} ) {
+        warn $uri->as_string, "\n";
+    }
 
-    return Google::Search::Response->new( http_response => $http_response );
+    my $request = HTTP::Request::Common::GET( $uri => @header_supplement );
+
+    if ( $ENV{GS_TRACE} && $request ) {
+        warn $request->as_string, "\n";
+    }
+
+    return $request;
 }
 
 sub page {
@@ -333,29 +269,12 @@ sub page {
     return $page;
 }
 
-=head2 $search->first 
-
-Returns a L<Google::Search::Result> representing the first result in the search, if any.
-
-Returns undef if nothing was found
-
-=cut
 
 sub first {
     my $self = shift;
     return $self->result( $self->start );
 }
 
-=head2 $search->next 
-
-An iterator for $search. Will the return the next result each time it is called, and undef when
-there are no more results.
-
-Returns a L<Google::Search::Result>
-
-Returns undef if nothing was found
-
-=cut
 
 sub next {
     my $self = shift;
@@ -363,17 +282,6 @@ sub next {
     return $self->{current} = $self->current->next;
 }
 
-=head2 $search->result( <rank> )
-
-Returns a L<Google::Search::Result> corresponding to the result at <rank>
-
-These are equivalent:
-
-    $search->result( 0 )
-
-    $search->first
-
-=cut
 
 sub result {
     my $self = shift;
@@ -399,15 +307,6 @@ sub result {
     return $self->_result->[$number] = $result;
 }
 
-=head2 $search->all
-
-Returns L<Google::Search::Result> list which includes every result Google has returned for the query
-
-In scalar context an array reference is returned, a list otherwise
-
-An empty list is returned if nothing was found
-
-=cut
 
 sub all {
     my $self = shift;
@@ -422,16 +321,6 @@ sub all {
     return wantarray ? @results : \@results;
 }
 
-=head2 $search->match( <code> )
-
-Returns a L<Google::Search::Result> list
-
-This method will iterate through each result in the search, passing the result to <code> as the first argument.
-If <code> returns true, then the result will be included in the returned list
-
-In scalar context this method returns the number of matches
-
-=cut
 
 sub match {
     my $self = shift;
@@ -449,14 +338,6 @@ sub match {
     return @matched;
 }
 
-=head2 $search->first_match( <code> )
-
-Returns a L<Google::Search::Result> that is the first to match <code>
-
-This method will iterate through each result in the search, passing the result to <code> as the first argument.
-If <code> returns true, then the result will be returned and iteration will stop.
-
-=cut
 
 sub first_match {
     my $self = shift;
@@ -480,6 +361,165 @@ $_->meta->make_immutable for qw/
     Google::Search::Result
     Google::Search::Error
 /;
+
+
+1;
+
+__END__
+=pod
+
+=head1 NAME
+
+Google::Search - Interface to the Google AJAX Search API and suggestion API
+
+=head1 VERSION
+
+version 0.026
+
+=head1 SYNOPSIS
+
+    my $search = Google::Search->Web( query => "rock" );
+    while ( my $result = $search->next ) {
+        print $result->rank, " ", $result->uri, "\n";
+    }
+
+You can also use the single-argument-style invocation:
+
+    Google::Search->Web( "query" )
+
+The following kinds of searches are supported
+
+    Google::Search->Local( ... )
+    Google::Search->Video( ... )
+    Google::Search->Blog( ... )
+    Google::Search->News( ... )
+    Google::Search->Image( ... )
+    Google::Search->Patent( ... )
+
+You can also take advantage of each service's specialized interface
+
+    # The search below specifies the latitude and longitude:
+    $search = Google::Search->Local( query => { q => "rock", sll => "33.823230,-116.512110" }, ... );
+
+    my $result = $search->first;
+    print $result->streetAddress, "\n";
+
+You can supply an API key and referrer (referer) if you have them
+
+    my $key = ... # This should be a valid API key, gotten from:
+                  # http://code.google.com/apis/ajaxsearch/signup.html
+
+    my $referrer = "http://example.com/" # This should be a valid referer for the above key
+
+    $search = Google::Search->Web(
+        key => $key, referrer => $referrer, # "referer =>" Would work too
+        query => { q => "rock", sll => "33.823230,-116.512110" }
+    );
+
+Get suggestions from the unofficial Google suggestion API using C<suggest>
+
+    my $suggestions = Google::Search->suggest( $term )
+
+=head1 DESCRIPTION
+
+Google::Search is an interface to the Google AJAX Search API (L<http://code.google.com/apis/ajaxsearch/>). 
+
+Currently, their API looks like it will fetch you the top 64 results for your search query.
+
+You may want to sign up for an API key, but it is not required. You can do so here: L<http://code.google.com/apis/ajaxsearch/signup.html>
+
+=head1 Shortcut usage for a specific service
+
+=head2 Google::Search->Web
+
+=head2 Google::Search->Local
+
+=head2 Google::Search->Video
+
+=head2 Google::Search->Blog
+
+=head2 Google::Search->News
+
+=head2 Google::Search->Book
+
+=head2 Google::Search->Image
+
+=head2 Google::Search->Patent
+
+=head1 USAGE
+
+=head2 Google::Search->new( ... ) 
+
+Prepare a new search object (handle)
+
+You can configure the search by passing the following to C<new>:
+
+    query           The search phrase to submit to Google
+                    Optionally, this can also be a hash of parameters to submit. You can
+                    use the hash form to take advantage of each service's varying interface.
+                    Make sure to at least include a "q" parameter with your search
+
+    service         The service to search under. This can be any of: web,
+                    local, video, blog, news, book, image, patent
+
+    start           Optional. Start searching from "start" rank instead of 0.
+                    Google::Search will skip fetching unnecessary results
+
+    key             Optional. Your Google AJAX Search API key (see Description)
+
+    referrer        Optional. A referrer that is valid for the above key
+                    For legacy purposes, "referer" is an acceptable spelling
+
+Both C<query> and C<service> are required
+
+=head2 $search->first 
+
+Returns a L<Google::Search::Result> representing the first result in the search, if any.
+
+Returns undef if nothing was found
+
+=head2 $search->next 
+
+An iterator for $search. Will the return the next result each time it is called, and undef when
+there are no more results.
+
+Returns a L<Google::Search::Result>
+
+Returns undef if nothing was found
+
+=head2 $search->result( <rank> )
+
+Returns a L<Google::Search::Result> corresponding to the result at <rank>
+
+These are equivalent:
+
+    $search->result( 0 )
+
+    $search->first
+
+=head2 $search->all
+
+Returns L<Google::Search::Result> list which includes every result Google has returned for the query
+
+In scalar context an array reference is returned, a list otherwise
+
+An empty list is returned if nothing was found
+
+=head2 $search->match( <code> )
+
+Returns a L<Google::Search::Result> list
+
+This method will iterate through each result in the search, passing the result to <code> as the first argument.
+If <code> returns true, then the result will be included in the returned list
+
+In scalar context this method returns the number of matches
+
+=head2 $search->first_match( <code> )
+
+Returns a L<Google::Search::Result> that is the first to match <code>
+
+This method will iterate through each result in the search, passing the result to <code> as the first argument.
+If <code> returns true, then the result will be returned and iteration will stop.
 
 =head2 $search->error
 
@@ -523,67 +563,16 @@ To alter the URI hostname/path or to give a custom user agent, pass in a hash:
 
 The passing order of the array, hash, and string does not matter
 
-=cut
-
-
 =head1 AUTHOR
 
-Robert Krimen, C<< <rkrimen at cpan.org> >>
+  Robert Krimen <robertkrimen@gmail.com>
 
-=head1 SEE ALSO
+=head1 COPYRIGHT AND LICENSE
 
-L<REST::Google::Search>
+This software is copyright (c) 2010 by Robert Krimen.
 
-=head1 BUGS
-
-Please report any bugs or feature requests to C<bug-google-search at rt.cpan.org>, or through
-the web interface at L<http://rt.cpan.org/NoAuth/ReportBug.html?Queue=Google-Search>.  I will be notified, and then you'll
-automatically be notified of progress on your bug as I make changes.
-
-
-
-
-=head1 SUPPORT
-
-You can find documentation for this module with the perldoc command.
-
-    perldoc Google::Search
-
-
-You can also look for information at:
-
-=over 4
-
-=item * RT: CPAN's request tracker
-
-L<http://rt.cpan.org/NoAuth/Bugs.html?Dist=Google-Search>
-
-=item * AnnoCPAN: Annotated CPAN documentation
-
-L<http://annocpan.org/dist/Google-Search>
-
-=item * CPAN Ratings
-
-L<http://cpanratings.perl.org/d/Google-Search>
-
-=item * Search CPAN
-
-L<http://search.cpan.org/dist/Google-Search>
-
-=back
-
-
-=head1 ACKNOWLEDGEMENTS
-
-
-=head1 COPYRIGHT & LICENSE
-
-Copyright 2008 Robert Krimen, all rights reserved.
-
-This program is free software; you can redistribute it and/or modify it
-under the same terms as Perl itself.
-
+This is free software; you can redistribute it and/or modify it under
+the same terms as the Perl 5 programming language system itself.
 
 =cut
 
-1; # End of Google::Search

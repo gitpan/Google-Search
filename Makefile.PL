@@ -1,39 +1,58 @@
-use inc::Module::Install;
 
-name 'Google-Search';
-all_from 'lib/Google/Search.pm';
-readme_from 'lib/Google/Search.pm';
+use strict;
+use warnings;
 
-resources repository => 'http://github.com/robertkrimen/google-search/tree/master';
 
-{
-    require ExtUtils::MakeMaker;
-    use strict;
-    no strict 'refs';
 
-    my $libscan = \&{"ExtUtils::MM_Any::libscan"};
-    *{"ExtUtils::MM_Any::libscan"} = sub {
-        return '' unless $libscan->(@_);
-        return '' if $_[1] =~ /\.sw[p-z]$/;
-        return $_[1];
-    };
+use ExtUtils::MakeMaker 6.31;
+
+
+
+my %WriteMakefileArgs = (
+                       'test' => {
+                                   'TESTS' => 't/*.t t/9bug/*.t'
+                                 },
+                       'NAME' => 'Google::Search',
+                       'DISTNAME' => 'Google-Search',
+                       'CONFIGURE_REQUIRES' => {
+                                                 'ExtUtils::MakeMaker' => '6.31'
+                                               },
+                       'AUTHOR' => 'Robert Krimen <robertkrimen@gmail.com>',
+                       'BUILD_REQUIRES' => {
+                                             'Test::Most' => '0'
+                                           },
+                       'ABSTRACT' => 'Interface to the Google AJAX Search API and suggestion API',
+                       'EXE_FILES' => [],
+                       'VERSION' => '0.026',
+                       'PREREQ_PM' => {
+                                        'Try::Tiny' => '0',
+                                        'URI' => '0',
+                                        'LWP::UserAgent' => '0',
+                                        'Carp::Clan::Share' => '0',
+                                        'Any::Moose' => '0',
+                                        'JSON' => '2'
+                                      },
+                       'LICENSE' => 'perl'
+                     );
+
+
+unless ( eval { ExtUtils::MakeMaker->VERSION(6.56) } ) {
+  my $br = delete $WriteMakefileArgs{BUILD_REQUIRES};
+  my $pp = $WriteMakefileArgs{PREREQ_PM}; 
+  for my $mod ( keys %$br ) {
+    if ( exists $pp->{$mod} ) {
+      $pp->{$mod} = $br->{$mod} if $br->{$mod} > $pp->{$mod}; 
+    }
+    else {
+      $pp->{$mod} = $br->{$mod};
+    }
+  }
 }
 
-{
-    map { my ($pk, $vr) = split m/\s/; build_requires $pk => $vr || 0 } grep { ! /^\s*#/ } split m/\n/, <<_END_;
-Test::Most
-_END_
+delete $WriteMakefileArgs{CONFIGURE_REQUIRES}
+  unless eval { ExtUtils::MakeMaker->VERSION(6.52) };
 
-    map { my ($pk, $vr) = split m/\s/; requires $pk => $vr || 0 } grep { ! /^\s*#/ } split m/\n/, <<_END_;
-Any::Moose
-Carp::Clan::Share
-JSON 2
-LWP::UserAgent
-Try::Tiny
-URI
-_END_
-}
+WriteMakefile(%WriteMakefileArgs);
 
-auto_install;
 
-WriteAll;
+
