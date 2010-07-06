@@ -23,7 +23,7 @@ my %WriteMakefileArgs = (
                                            },
                        'ABSTRACT' => 'Interface to the Google AJAX Search API and suggestion API',
                        'EXE_FILES' => [],
-                       'VERSION' => '0.026',
+                       'VERSION' => '0.027',
                        'PREREQ_PM' => {
                                         'Try::Tiny' => '0',
                                         'URI' => '0',

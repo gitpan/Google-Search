@@ -20,4 +20,4 @@ requires:
   LWP::UserAgent: 0
   Try::Tiny: 0
   URI: 0
-version: 0.026
+version: 0.027

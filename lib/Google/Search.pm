@@ -1,6 +1,6 @@
 package Google::Search;
 BEGIN {
-  $Google::Search::VERSION = '0.026';
+  $Google::Search::VERSION = '0.027';
 }
 # ABSTRACT: Interface to the Google AJAX Search API and suggestion API
 
@@ -374,7 +374,7 @@ Google::Search - Interface to the Google AJAX Search API and suggestion API
 
 =head1 VERSION
 
-version 0.026
+version 0.027
 
 =head1 SYNOPSIS
 

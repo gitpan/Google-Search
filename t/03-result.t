@@ -10,7 +10,7 @@ use Google::Search;
 my $result;
 sub result (@) {
     my $service = shift;
-    my $search = Google::Search->new( service => $service, query => 'rock', @_ );
+    my $search = Google::Search->new( service => $service, query => 'metal', @_ );
     my $result = $search->first;
     die "Error searching in $service: ", $search->error->message unless $result;
     return $result;
@@ -33,20 +33,20 @@ sub ok_attr (@) {
 }
 
 SKIP: {
-    skip 'Do TEST_RELEASE=1 to go out to Google and run some tests' unless $ENV{TEST_RELEASE};
+    skip 'Do RELEASE_TESTING=1 to go out to Google and run some tests' unless $ENV{RELEASE_TESTING};
 
     for ( qw/ web local video blog blogs
             news book books image images patent patents / ) {
         ok_diag( result( $_ )->title );
     }
 
-    ok_attr( result( 'local' ), qw/ lat lng streetAddress / );
+    ok_attr( result( 'local' ), qw/ lat lng streetAddress phoneNumbers addressLines / );
     ok_attr( result( 'video' ), qw/ published publisher / );
     ok_attr( result( 'blog' ), qw/ blogUrl author / );
     ok_attr( result( 'news' ), qw/ publisher publishedDate / );
     ok_attr( result( 'book' ), qw/ publishedYear authors / );
     ok_attr( result( 'image' ), qw/ width height / );
-    ok_attr( result( 'patent' ), qw/ assignee applicationDate patentNumber patentStatus / );
+    ok_attr( result( 'patent' ), qw/ applicationDate patentNumber patentStatus / );
 }
 
 1;
