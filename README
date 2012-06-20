@@ -1,11 +1,14 @@
 NAME
     Google::Search - Interface to the Google AJAX Search API and suggestion
-    API
+    API (DEPRECATED)
 
 VERSION
-    version 0.027
+    version 0.028
 
 SYNOPSIS
+    NOTE: The Google AJAX Search API has been deprecated:
+    <http://developers.google.com/web-search/docs/>
+
         my $search = Google::Search->Web( query => "rock" );
         while ( my $result = $search->next ) {
             print $result->rank, " ", $result->uri, "\n";
@@ -50,6 +53,9 @@ SYNOPSIS
         my $suggestions = Google::Search->suggest( $term )
 
 DESCRIPTION
+    NOTE: The Google AJAX Search API has been deprecated:
+    <http://developers.google.com/web-search/docs/>
+
     Google::Search is an interface to the Google AJAX Search API
     (<http://code.google.com/apis/ajaxsearch/>).
 
@@ -185,10 +191,10 @@ USAGE
     The passing order of the array, hash, and string does not matter
 
 AUTHOR
-      Robert Krimen <robertkrimen@gmail.com>
+    Robert Krimen <robertkrimen@gmail.com>
 
 COPYRIGHT AND LICENSE
-    This software is copyright (c) 2010 by Robert Krimen.
+    This software is copyright (c) 2012 by Robert Krimen.
 
     This is free software; you can redistribute it and/or modify it under
     the same terms as the Perl 5 programming language system itself.

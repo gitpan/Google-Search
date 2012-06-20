@@ -1,9 +1,8 @@
 package Google::Search;
-BEGIN {
-  $Google::Search::VERSION = '0.027';
+{
+  $Google::Search::VERSION = '0.028';
 }
-# ABSTRACT: Interface to the Google AJAX Search API and suggestion API
-
+# ABSTRACT: Interface to the Google AJAX Search API and suggestion API (DEPRECATED)
 
 use warnings;
 use strict;
@@ -370,13 +369,15 @@ __END__
 
 =head1 NAME
 
-Google::Search - Interface to the Google AJAX Search API and suggestion API
+Google::Search - Interface to the Google AJAX Search API and suggestion API (DEPRECATED)
 
 =head1 VERSION
 
-version 0.027
+version 0.028
 
 =head1 SYNOPSIS
+
+NOTE: The Google AJAX Search API has been deprecated: L<http://developers.google.com/web-search/docs/>
 
     my $search = Google::Search->Web( query => "rock" );
     while ( my $result = $search->next ) {
@@ -421,6 +422,8 @@ Get suggestions from the unofficial Google suggestion API using C<suggest>
     my $suggestions = Google::Search->suggest( $term )
 
 =head1 DESCRIPTION
+
+NOTE: The Google AJAX Search API has been deprecated: L<http://developers.google.com/web-search/docs/>
 
 Google::Search is an interface to the Google AJAX Search API (L<http://code.google.com/apis/ajaxsearch/>). 
 
@@ -565,11 +568,11 @@ The passing order of the array, hash, and string does not matter
 
 =head1 AUTHOR
 
-  Robert Krimen <robertkrimen@gmail.com>
+Robert Krimen <robertkrimen@gmail.com>
 
 =head1 COPYRIGHT AND LICENSE
 
-This software is copyright (c) 2010 by Robert Krimen.
+This software is copyright (c) 2012 by Robert Krimen.
 
 This is free software; you can redistribute it and/or modify it under
 the same terms as the Perl 5 programming language system itself.
